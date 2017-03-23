@@ -47,6 +47,9 @@ const edgeArrowSize = 8;
 const zoomDelay = 500; // ms
 const zoomDur = 750; // ms
 
+// double click
+var clickedOnce = false;
+var timer;
 
 function styleToString(style){
   return Object.keys(style)
@@ -57,7 +60,7 @@ function styleToString(style){
 }
 
 
-function makeStyles(primary='dodgerblue', light='white', dark='black'){
+function makeStyles(primary = 'dodgerblue', light = 'white', dark = 'black', edgeLight = 'white') {
  let styles = {
     wrapper: {
       base: {
@@ -110,14 +113,14 @@ function makeStyles(primary='dodgerblue', light='white', dark='black'){
     },
     edge: {
       base: {
-        color: light,
+        color: edgeLight,
         stroke: primary,
         strokeWidth: '2px',
         markerEnd: 'url(#end-arrow)',
         cursor: 'pointer'
       },
       selected: {
-        color: primary,
+        color: dark,
         stroke: primary
       }
     },
@@ -205,8 +208,8 @@ class GraphView extends Component {
       readOnly: props.readOnly || false,
       enableFocus: props.enableFocus || false, // Enables focus/unfocus
       edgeSwapQueue: [],    // Stores nodes to be swapped
-      styles: makeStyles(props.primary, props.light, props.dark),
-      nodeDefs: Object.keys(props.nodeTypes).map(function(type){
+      styles: makeStyles(props.primary, props.light, props.dark, props.edgeLight),
+      nodeDefs: Object.keys(props.nodeTypes).map(function (type) {
         return props.nodeTypes[type].shape
       }),                   // SVG definitions for nodes
       nodeSubtypeDefs: Object.keys(props.nodeSubtypes).map(function(type){
@@ -413,9 +416,9 @@ class GraphView extends Component {
         case "Delete":
           this.handleDelete();
           break;
-        case "Backspace":
-          this.handleDelete();
-          break;
+        // case "Backspace":
+        //   this.handleDelete()
+        //   break;
         default:
           break;
       }
@@ -474,11 +477,36 @@ class GraphView extends Component {
     }
   }
 
-  handleNodeMouseUp(d) {
 
+  handleSingleClick(d) {
+
+    clickedOnce = false;
     if(this.state.selectingNode){
       this.props.onSelectNode(d);
       this.setState({selectingNode: false});
+    }
+  }
+
+  handleDoubleClick(d) {
+
+    clickedOnce = false;
+    clearTimeout(timer);
+    if (this.state.selectingNode) {
+      this.setState({ selectingNode: false });
+      if (this.props.onDoubleClickNode)
+        this.props.onDoubleClickNode(d);
+    }
+  }
+
+  handleNodeMouseUp(d) {
+    if (clickedOnce) {
+      this.handleDoubleClick(d);
+    } else {
+      let that = this;
+      timer = setTimeout(function () {
+        that.handleSingleClick(d);
+      }, 250);
+      clickedOnce = true;
     }
   }
 
@@ -718,7 +746,11 @@ class GraphView extends Component {
       `${title.substring(0, this.props.maxTitleChars)}...`;
 
     let lineOffset = 18;
-    let textOffset = d.type === this.props.emptyType ? -9 : 18;
+    let textOffset;
+    if (!this.props.textOffset)
+      textOffset = d.type === this.props.emptyType ? -9 : 18;
+    else
+      textOffset = this.props.textOffset;
 
     d3Node.selectAll("text").remove();
     
@@ -865,9 +897,15 @@ class GraphView extends Component {
     var nodes = this.props.nodes;
     var edges = this.props.edges;
 
+    let viewTransform = this.state.viewTransform;
+
+    if (isNaN(viewTransform.k)) viewTransform.k = 0;
+    if (isNaN(viewTransform.x)) viewTransform.x = 0;
+    if (isNaN(viewTransform.y)) viewTransform.y = 0;
+
     // Update the view w/ new zoom/pan
     const view = d3.select(this.refs.view)
-      .attr("transform", this.state.viewTransform);
+      .attr("transform", viewTransform);
 
     const entities = d3.select(this.refs.entities);
 
@@ -960,6 +998,7 @@ GraphView.propTypes = {
   primary: React.PropTypes.string,
   light: React.PropTypes.string,
   dark: React.PropTypes.string,
+  edgeLight: React.PropTypes.string,
   style: React.PropTypes.object,
   nodeKey: React.PropTypes.string.isRequired,
   emptyType: React.PropTypes.string.isRequired,
@@ -983,6 +1022,8 @@ GraphView.propTypes = {
   onSwapEdge: React.PropTypes.func.isRequired,
   canDeleteEdge: React.PropTypes.func,
   onDeleteEdge: React.PropTypes.func.isRequired,
+  onDoubleClickNode: React.PropTypes.func,
+  textOffset: React.PropTypes.number,
   maxTitleChars: React.PropTypes.number, // Per line.
   transitionTime: React.PropTypes.number // D3 Enter/Exit duration
 };
